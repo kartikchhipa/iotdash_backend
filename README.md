@@ -33,6 +33,7 @@
     ```
     python manage.py makemigrations
     python manage.py migrate
+    python manage.py migrate --run-syncdb
     ```
 - Create a superuser (Not Compulsory)
     ```
@@ -44,4 +45,3 @@
     ```
    
   ### Backend Can be accesible at: localhost:8000
-  ### Frontend GitHub Url - [MPC Frontend](https://github.com/aryan0141/mpc_frontend)
