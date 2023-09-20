@@ -1,4 +1,4 @@
-# Backend Code for MPC Course Project
+# Backend Code for IOT Dashboard
 
 ## Tech Stack Used
 1. Django REST
