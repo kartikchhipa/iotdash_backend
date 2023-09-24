@@ -29,12 +29,14 @@
     ```
     pip install -r requirements.txt
     ```
+- Copy db.sqlite3 to another location before doing migrations
 - Make database migrations
     ```
     python manage.py makemigrations
     python manage.py migrate
     python manage.py migrate --run-syncdb
     ```
+- After migration copy db.sqlite3 back to the project location and replace
 - Create a superuser (Not Compulsory)
     ```
     python manage.py createsuperuser
@@ -47,3 +49,4 @@
   ### Backend Can be accesible at: localhost:8000
 
   ### The code for frontend is available at [Frontend](https://github.com/kartikchhipa/iotdash_frontend)
+
