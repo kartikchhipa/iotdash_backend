@@ -23,7 +23,7 @@ class UserProfileAPIView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request, format=None):
         user = request.user
-        serialized_users = UserProfileSerializer(user).data
+        serialized_users = UserProfileSerializer(user).data   
         return Response(serialized_users, status=status.HTTP_200_OK)
 
 class UserRegistrationView(APIView):
@@ -39,6 +39,7 @@ class UserRegistrationView(APIView):
       log = UserLogs(userName=user.name, data="Created Account")
       log.save()
     return Response({'token':token, 'msg':'Registration Successful'}, status=status.HTTP_201_CREATED)
+    
 
 class UserLoginView(APIView):
   renderer_classes = [UserRenderer]
@@ -61,7 +62,16 @@ class UserLoginView(APIView):
         log = UserLogs(userName=user.name, data="Logged in")
         log.save()
 
-      return Response({'token':token, 'msg':'Login Success'}, status=status.HTTP_200_OK)
+      user_profile_serializer = UserProfileSerializer(user)
+
+            # Include user details in the response
+      response_data = {
+          'token': token,
+          'msg': 'Login Success',
+          'user_details': user_profile_serializer.data,
+      }
+
+      return Response(response_data, status=status.HTTP_200_OK)
     else:
       return Response({'errors':{'non_field_errors':['Email or Password is not Valid']}}, status=status.HTTP_404_NOT_FOUND)
 
