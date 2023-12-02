@@ -28,7 +28,7 @@ SECRET_KEY = config('DJANGO_SECRET_KEY', cast=str)
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)   
 
-ALLOWED_HOSTS = ['192.168.1.11','172.19.38,244','0.0.0.0','localhost','172.31.18.237','192.168.137.1']
+ALLOWED_HOSTS = ['192.168.1.11','172.19.38,244','0.0.0.0','localhost','172.31.18.237','192.168.137.1','127.0.0.1']
 
 
 # Application definition
@@ -89,7 +89,7 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.BasicAuthentication'
+        
                
     ),
     'DEFAULT_PARSER_CLASSES': (
@@ -137,6 +137,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Internationalization
 # https://docs.djangoproject.com/en/4.1/topics/i18n/
+CSRF_TRUSTED_ORIGINS = ['http://localhost:8080/']
 
 LANGUAGE_CODE = "en-us"
 

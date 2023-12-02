@@ -16,7 +16,7 @@ from rest_framework.decorators import permission_classes
 from django.views.decorators.csrf import csrf_exempt
 import itertools
 from django.http import JsonResponse
-
+from rest_framework.decorators import api_view
 
 
 def get_session_id(request):
@@ -58,7 +58,7 @@ class SensorDataAPI(APIView):
             else:
                 return Response([], status=status.HTTP_200_OK)
         
-    @csrf_exempt
+    
     def delete(self, request):
         
         user = request.user
@@ -78,8 +78,9 @@ class SensorDataAPI(APIView):
 class DeviceAPI(APIView):
 
     def get(self,request):
-
+        
         user = request.user
+        
         if(user.is_anonymous):
             return Response([], status=status.HTTP_200_OK)
         
@@ -113,7 +114,9 @@ class DeviceAPI(APIView):
         else:
             return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_400_BAD_REQUEST)
         
+    
     def put(self, request):
+        print(11111)
         user = request.user
         device_id = request.data["device_id"]
         if(user.is_staff):
@@ -126,7 +129,10 @@ class DeviceAPI(APIView):
             else:
                 return Response({"Error": "No Device found with ID"}, status=status.HTTP_400_BAD_REQUEST)
                 
+    permission_classes = [IsAuthenticated] 
     def post(self,request,format=None):
+        print(1111)
+        print(request.user)
         data = request.data
         device_id = data["device_id"]
         if Devices.objects.filter(device_id=device_id).exists():
