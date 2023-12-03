@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from .serializers import SensorSerializer, LiveSensorSerializer, LocationSerializer, UserLogsSerializer, UserInteractionSerializer, DeviceSerializer, DeviceAllocationSerializer
+from .serializers import SensorSerializer, LiveSensorSerializer, LocationSerializer, UserLogsSerializer, UserInteractionSerializer, DeviceSerializer, DeviceAllocationSerializer, DeviceSensorsSerializer
 from .models import Sensor, Location, LiveSensor, User, UserLogs, UserInteraction, Devices, DeviceAllocation
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -17,50 +17,75 @@ from django.views.decorators.csrf import csrf_exempt
 import itertools
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
-
+from rest_framework.authentication import TokenAuthentication, SessionAuthentication
 
 def get_session_id(request):
     session_id = request.session.session_key
     return JsonResponse({'session_id': session_id})
 
 
+class addSensorAPI(APIView):
+
+    def get(self, request):
+        user = request.user
+        if(user.is_anonymous):
+            return Response([], status=status.HTTP_200_OK)
+        elif(user.is_staff):
+            sensors = Sensor.objects.all()
+            sensor_serialized = DeviceSensorsSerializer(sensors, many=True).data
+            return Response(sensor_serialized, status=status.HTTP_200_OK)
+        
+
+    def post(self, request):
+        user = request.user
+        if(user.is_anonymous):
+            return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_400_BAD_REQUEST)
+        elif(user.is_staff):
+            data = request.data
+            device_id = data["device_id"]
+            sensor_id = data["sensor_id"]
+            sensor_type = data["sensor_type"]
+            value_type = data["value_type"]
+            unit = data["unit"]
+            if Devices.objects.filter(device_id=device_id).exists():
+                device = Devices.objects.filter(device_id=device_id).first()
+                if(Sensor.objects.filter(sensor_id=sensor_id, device_id=device_id).exists()):
+                    return Response({"Error": "Sensor already exists"}, status=status.HTTP_202_ACCEPTED)
+                sensor = Sensor(sensor_id=sensor_id, device_id=device, sensor_type=sensor_type, value_type=value_type, unit=unit)
+                sensor.save()
+                return Response({"Success": "Sensor added succesfully"}, status=status.HTTP_200_OK)
+            else:
+                return Response({"Error": "Device does not exists"}, status=status.HTTP_202_ACCEPTED)
+
 class SensorDataAPI(APIView):
 
     def get(self, request):
         user = request.user
-
         # if the user is AnonymousUser then return empty list
         if(user.is_anonymous):
             return Response([], status=status.HTTP_200_OK)
-        
         elif(user.is_staff):
             sensors = Sensor.objects.all()
             sensor_serialized = SensorSerializer(sensors, many=True).data
             return Response(sensor_serialized, status=status.HTTP_200_OK)
-            
         else:
             device = DeviceAllocation.objects.filter(user = user)
             if(device.exists()):
-
                 # select all the devices allocated to the user
                 device_allocation = device.all()
                 sensor_serialized = []
                 for device in device_allocation:
-
                     # select all the sensors of the device
                     sensors = Sensor.objects.filter(device_id = device.device.device_id)
                     print(sensors)
                     sensor_serialized.append(SensorSerializer(sensors, many=True).data)
-
                 flat_list = list(itertools.chain(*sensor_serialized))
                 return Response(flat_list, status=status.HTTP_200_OK)
-            
             else:
                 return Response([], status=status.HTTP_200_OK)
         
     
     def delete(self, request):
-        
         user = request.user
         if(user.is_staff):
             data = request.data
@@ -78,9 +103,7 @@ class SensorDataAPI(APIView):
 class DeviceAPI(APIView):
 
     def get(self,request):
-        
         user = request.user
-        
         if(user.is_anonymous):
             return Response([], status=status.HTTP_200_OK)
         
@@ -116,7 +139,7 @@ class DeviceAPI(APIView):
         
     
     def put(self, request):
-        print(11111)
+        
         user = request.user
         device_id = request.data["device_id"]
         if(user.is_staff):
@@ -129,18 +152,20 @@ class DeviceAPI(APIView):
             else:
                 return Response({"Error": "No Device found with ID"}, status=status.HTTP_400_BAD_REQUEST)
                 
-    permission_classes = [IsAuthenticated] 
+    
     def post(self,request,format=None):
-        print(1111)
-        print(request.user)
         data = request.data
         device_id = data["device_id"]
-        if Devices.objects.filter(device_id=device_id).exists():
-            return Response({"Error": "Device already exists"}, status=status.HTTP_400_BAD_REQUEST)
+        user = request.user
+        if(user.is_staff):
+            if Devices.objects.filter(device_id=device_id).exists():
+                return Response({"Error": "Device already exists"}, status=status.HTTP_202_ACCEPTED)
+            else:
+                device = Devices(device_id=device_id, device_name=data["device_name"])
+                device.save()
+                return Response({"Success": "Device added succesfully"}, status=status.HTTP_200_OK)
         else:
-            device = Devices(device_id=device_id, device_name=data["device_name"])
-            device.save()
-            return Response({"Success": "Device added succesfully"}, status=status.HTTP_200_OK)
+            return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_400_BAD_REQUEST)
 
 class DeviceAllocationAPI(APIView):
 
@@ -172,12 +197,12 @@ class DeviceAllocationAPI(APIView):
             if Devices.objects.filter(device_id = device_id).exists():
                 device = Devices.objects.filter(device_id = device_id).first()
                 if(DeviceAllocation.objects.filter(device=device, user=user1).exists()):
-                    return Response({"Error": "Device already allocated to this user"}, status=status.HTTP_400_BAD_REQUEST)
-                device_allocation = DeviceAllocation(device=device, user=user1, username=user1.name)
+                    return Response({"Error": "Device already allocated to this user"}, status=status.HTTP_208_ALREADY_REPORTED)
+                device_allocation = DeviceAllocation(device=device, user=user1, user_name=user1.name)
                 device_allocation.save()
                 return Response({"Success": "Device allocated succesfully"}, status=status.HTTP_200_OK)
             else:
-                return Response({"Error": "Device does not exists"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"Error": "Device does not exists"}, status=status.HTTP_202_ACCEPTED)
         else:
             return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -185,6 +210,7 @@ class DeviceAllocationAPI(APIView):
 
         data = request.data
         user = request.user
+        
         device_id = data["device_id"]
         if(user.is_staff):
             device = Devices.objects.filter(device_id = device_id)

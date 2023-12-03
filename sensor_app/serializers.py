@@ -25,7 +25,10 @@ class UserInteractionSerializer(serializers.ModelSerializer):
         model = UserInteraction
         fields = ('__all__')
 
-
+class DeviceSensorsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Sensor
+        fields = ('__all__')
 
 class SensorSerializer(serializers.ModelSerializer):
     live_sensors_set = LiveSensorSerializer(source='live_sensors', many=True, read_only=True)

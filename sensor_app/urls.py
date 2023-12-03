@@ -1,9 +1,10 @@
 from django.urls import path, include
-from .views import SensorDataAPI, DeviceAPI, DeviceAllocationAPI, LiveDataAPI, UserLogsAPI, UserInteractionAPI, get_session_id
+from .views import SensorDataAPI, DeviceAPI, DeviceAllocationAPI, LiveDataAPI, UserLogsAPI, UserInteractionAPI, get_session_id, addSensorAPI
 
 urlpatterns = [
     path('deviceAllocation/', DeviceAllocationAPI.as_view()),
     path('sensorData/', SensorDataAPI.as_view()),
+    path('addSensor/', addSensorAPI.as_view() ),
     path('devices/', DeviceAPI.as_view()),
     path('liveData/', LiveDataAPI.as_view()),
     path('userLogs/', UserLogsAPI.as_view()),

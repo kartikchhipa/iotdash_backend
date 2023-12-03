@@ -137,7 +137,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Internationalization
 # https://docs.djangoproject.com/en/4.1/topics/i18n/
-CSRF_TRUSTED_ORIGINS = ['http://localhost:8080/']
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3030/']
 
 LANGUAGE_CODE = "en-us"
 
