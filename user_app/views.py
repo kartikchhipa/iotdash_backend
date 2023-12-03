@@ -13,9 +13,11 @@ from sensor_app.models import UserLogs
 # Generate Token Manually
 def get_tokens_for_user(user):
   refresh = RefreshToken.for_user(user)
+  refresh['is_staff'] = user.is_staff
   return {
       'refresh': str(refresh),
       'access': str(refresh.access_token),
+      
   }
 
 # API to get the user information using authentication token
