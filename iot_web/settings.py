@@ -28,7 +28,7 @@ SECRET_KEY = config('DJANGO_SECRET_KEY', cast=str)
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)   
 
-ALLOWED_HOSTS = ['192.168.1.11','172.19.38,244','0.0.0.0','localhost','172.31.18.237','192.168.137.1','127.0.0.1']
+ALLOWED_HOSTS = ['192.168.1.11','172.19.38,244','0.0.0.0','localhost','172.31.18.237','192.168.137.1','127.0.0.1','10.6.0.56']
 
 
 # Application definition
@@ -95,7 +95,8 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PARSER_CLASSES': (
         'rest_framework.parsers.FormParser',
-        'rest_framework.parsers.MultiPartParser'
+        'rest_framework.parsers.MultiPartParser',
+        'rest_framework.parsers.JSONParser',
     )
 }
 
@@ -204,3 +205,5 @@ CORS_ALLOWED_ORIGINS = [
     "https://localhost:8080",
     "http://127.0.0.1:3030",
 ]
+
+CORS_ORIGIN_ALLOW_ALL = True

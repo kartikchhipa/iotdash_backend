@@ -6,9 +6,6 @@ from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.renderers import JSONRenderer
 from django.http import HttpResponse
-import ast
-import random
-import requests
 from decouple import config
 import datetime
 from rest_framework.permissions import IsAuthenticated
@@ -65,12 +62,20 @@ class SensorDataAPI(APIView):
         if(user.is_anonymous):
             return Response([], status=status.HTTP_200_OK)
         elif(user.is_staff):
+            
+            print(request.headers.keys())
             sensors = Sensor.objects.all()
             sensor_serialized = SensorSerializer(sensors, many=True).data
             return Response(sensor_serialized, status=status.HTTP_200_OK)
+        
         else:
+            # obtain all the keys of the request data
+            data = request.data
+            print(data.keys())
+            
             device = DeviceAllocation.objects.filter(user = user)
             if(device.exists()):
+                
                 # select all the devices allocated to the user
                 device_allocation = device.all()
                 sensor_serialized = []
@@ -81,6 +86,44 @@ class SensorDataAPI(APIView):
                     sensor_serialized.append(SensorSerializer(sensors, many=True).data)
                 flat_list = list(itertools.chain(*sensor_serialized))
                 return Response(flat_list, status=status.HTTP_200_OK)
+            else:
+                return Response([], status=status.HTTP_200_OK)
+        
+    def post(self, request):
+        
+        user = request.user
+        if(user.is_anonymous):
+            return Response([], status=status.HTTP_200_OK)
+        elif(user.is_staff):
+            request_keys = request.data.keys()
+
+            if("start_time" in request_keys and "end_time" in request_keys and "device_id" in request_keys):
+                start_time = request.data["start_time"]
+                end_time = request.data["end_time"]
+                device_id = request.data["device_id"]
+                query_set = Sensor.objects.filter(live_sensors__timestamp__range=[start_time, end_time], device_id=device_id).distinct()
+                sensor_serialized = SensorSerializer(query_set, many=True).data
+                return Response(sensor_serialized, status=status.HTTP_200_OK)
+                
+            elif("device_id" in request_keys):
+                device_id = request.data["device_id"]
+                sensors = Sensor.objects.filter(device_id=device_id)
+                sensor_serialized = SensorSerializer(sensors, many=True).data
+                return Response(sensor_serialized, status=status.HTTP_200_OK)
+            else:
+                return Response([], status=status.HTTP_400_BAD_REQUEST)
+        else:
+            device = DeviceAllocation.objects.filter(user = user)
+            if(device.exists()):
+                device_id = request.data["device_id"]
+                device_allocation = device.filter(device_id = device_id)
+                if(device_allocation.exists()):
+                    # select all the sensors of the device
+                    sensors = Sensor.objects.filter(device_id = device_id)
+                    sensor_serialized = SensorSerializer(sensors, many=True).data
+                    return Response(sensor_serialized, status=status.HTTP_200_OK)
+                else:
+                    return Response([], status=status.HTTP_200_OK)
             else:
                 return Response([], status=status.HTTP_200_OK)
         
@@ -111,7 +154,6 @@ class DeviceAPI(APIView):
             devices = Devices.objects.all()
             device_serialized = DeviceSerializer(devices, many=True).data
             return Response(device_serialized, status=status.HTTP_200_OK)
-        
         else:
             devices = DeviceAllocation.objects.filter(user = user)
             device_serialized = []
@@ -121,9 +163,11 @@ class DeviceAPI(APIView):
                     device_serialized.append(DeviceSerializer(device, many=True).data)
                 flat_list = list(itertools.chain(*device_serialized))
                 return Response(flat_list, status=status.HTTP_200_OK)
+            else:
+                return Response([], status=status.HTTP_200_OK)
         
     def delete(self, request):
-        user = request.user 
+        user = request.user
         if(user.is_staff):
             data = request.data
             device_id = data["device_id"]
@@ -253,16 +297,9 @@ class LiveDataAPI(APIView):
 
     def post(self, request):
         print(request.content_type)
-        request_text = request.body.decode('utf-8')
-        print(request_text)
-
         res = request.data
-        
-        
         data = res['Data']
-        
         sensor_id = res['sensor_id']
-        
         device_id = res['device_id']
         timestamp = str(datetime.datetime.now())
         sensor = Sensor.objects.filter(sensor_id=sensor_id, device_id = device_id)
@@ -273,10 +310,6 @@ class LiveDataAPI(APIView):
             return Response({"Success": "Data Added Successfully"}, status=status.HTTP_200_OK)
         else:
             return Response({"Error": "No Sensor found with these credentials"}, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
 
 class UserLogsAPI(APIView):
     # Get all user logs
