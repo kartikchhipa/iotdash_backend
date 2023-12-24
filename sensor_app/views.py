@@ -15,171 +15,216 @@ import itertools
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
+import jwt 
+from rest_framework import exceptions
 
 def get_session_id(request):
     session_id = request.session.session_key
     return JsonResponse({'session_id': session_id})
 
+def authenticate_credentials(token):
+  try:
+    payload = jwt.decode(token, config('DJANGO_SECRET_KEY', cast=str), algorithms='HS256')
+    user = User.objects.get(id=payload['id'])
+  except Exception as e:
+    raise exceptions.AuthenticationFailed(e)
+  return user,payload
 
 class addSensorAPI(APIView):
 
     def get(self, request):
-        user = request.user
-        if(user.is_anonymous):
-            return Response([], status=status.HTTP_200_OK)
-        elif(user.is_staff):
-            sensors = Sensor.objects.all()
-            sensor_serialized = DeviceSensorsSerializer(sensors, many=True).data
-            return Response(sensor_serialized, status=status.HTTP_200_OK)
         
+        refresh_token = request.COOKIES.get('refreshToken')
+        if refresh_token is None:
+            return Response({"Error": "No refresh token found"}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            if(request.user.is_anonymous):
+                return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_401_UNAUTHORIZED)
+            user, _ = authenticate_credentials(refresh_token)
+            if(user.is_staff):
+                sensors = Sensor.objects.all()
+                sensor_serialized = DeviceSensorsSerializer(sensors, many=True).data
+                return Response(sensor_serialized, status=status.HTTP_200_OK)
+            else:
+                device_allocated = DeviceAllocation.objects.filter(user = user)
+                if(device_allocated.exists()):
+                    sensors = []
+                    for device in device_allocated:
+                        sensors.append(Sensor.objects.filter(device_id = device.device.device_id))
+                    sensor_serialized = DeviceSensorsSerializer(sensors, many=True).data
+                    return Response(sensor_serialized, status=status.HTTP_200_OK)
+                else:
+                    return Response([], status=status.HTTP_200_OK)
 
     def post(self, request):
-        user = request.user
-        if(user.is_anonymous):
-            return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_400_BAD_REQUEST)
-        elif(user.is_staff):
-            data = request.data
-            device_id = data["device_id"]
-            sensor_id = data["sensor_id"]
-            sensor_type = data["sensor_type"]
-            value_type = data["value_type"]
-            unit = data["unit"]
-            if Devices.objects.filter(device_id=device_id).exists():
-                device = Devices.objects.filter(device_id=device_id).first()
-                if(Sensor.objects.filter(sensor_id=sensor_id, device_id=device_id).exists()):
-                    return Response({"Error": "Sensor already exists"}, status=status.HTTP_202_ACCEPTED)
-                sensor = Sensor(sensor_id=sensor_id, device_id=device, sensor_type=sensor_type, value_type=value_type, unit=unit)
-                sensor.save()
-                return Response({"Success": "Sensor added succesfully"}, status=status.HTTP_200_OK)
+        refresh_token = request.COOKIES.get('refreshToken')
+        if refresh_token is None:
+            return Response({"Error": "No refresh token found"}, status=status.HTTP_400_BAD_REQUEST)
+        else:       
+            if(request.user.is_anonymous):
+                return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_401_UNAUTHORIZED)
+            user, _ = authenticate_credentials(refresh_token)
+            if(user.is_staff):
+                data = request.data
+                device_id = data["device_id"]
+                sensor_id = data["sensor_id"]
+                sensor_type = data["sensor_type"]
+                value_type = data["value_type"]
+                unit = data["unit"]
+                if Devices.objects.filter(device_id=device_id).exists():
+                    device = Devices.objects.filter(device_id=device_id).first()
+                    if(Sensor.objects.filter(sensor_id=sensor_id, device_id=device_id).exists()):
+                        return Response({"Error": "Sensor already exists"}, status=status.HTTP_202_ACCEPTED)
+                    sensor = Sensor(sensor_id=sensor_id, device_id=device, sensor_type=sensor_type, value_type=value_type, unit=unit)
+                    sensor.save()
+                    return Response({"Success": "Sensor added succesfully"}, status=status.HTTP_200_OK)
+                else:
+                    return Response({"Error": "Device does not exists"}, status=status.HTTP_202_ACCEPTED)
             else:
-                return Response({"Error": "Device does not exists"}, status=status.HTTP_202_ACCEPTED)
+                return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_401_UNAUTHORIZED)
 
 class SensorDataAPI(APIView):
 
     def get(self, request):
-        user = request.user
-        # if the user is AnonymousUser then return empty list
-        if(user.is_anonymous):
-            return Response([], status=status.HTTP_200_OK)
-        elif(user.is_staff):
-            
-            print(request.headers.keys())
-            sensors = Sensor.objects.all()
-            sensor_serialized = SensorSerializer(sensors, many=True).data
-            return Response(sensor_serialized, status=status.HTTP_200_OK)
-        
+        refresh_token = request.COOKIES.get('refreshToken')
+        if refresh_token is None:
+            return Response({"Error": "No refresh token found"}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            # obtain all the keys of the request data
-            data = request.data
-            print(data.keys())
-            
-            device = DeviceAllocation.objects.filter(user = user)
-            if(device.exists()):
-                
-                # select all the devices allocated to the user
-                device_allocation = device.all()
-                sensor_serialized = []
-                for device in device_allocation:
-                    # select all the sensors of the device
-                    sensors = Sensor.objects.filter(device_id = device.device.device_id)
-                    print(sensors)
-                    sensor_serialized.append(SensorSerializer(sensors, many=True).data)
-                flat_list = list(itertools.chain(*sensor_serialized))
-                return Response(flat_list, status=status.HTTP_200_OK)
-            else:
+            if(request.user.is_anonymous):
                 return Response([], status=status.HTTP_200_OK)
-        
-    def post(self, request):
-        
-        user = request.user
-        if(user.is_anonymous):
-            return Response([], status=status.HTTP_200_OK)
-        elif(user.is_staff):
-            request_keys = request.data.keys()
-
-            if("start_time" in request_keys and "end_time" in request_keys and "device_id" in request_keys):
-                start_time = request.data["start_time"]
-                end_time = request.data["end_time"]
-                device_id = request.data["device_id"]
-                query_set = Sensor.objects.filter(live_sensors__timestamp__range=[start_time, end_time], device_id=device_id).distinct()
-                sensor_serialized = SensorSerializer(query_set, many=True).data
-                return Response(sensor_serialized, status=status.HTTP_200_OK)
+            user, _ = authenticate_credentials(refresh_token)
+            if(user.is_staff):
                 
-            elif("device_id" in request_keys):
-                device_id = request.data["device_id"]
-                sensors = Sensor.objects.filter(device_id=device_id)
+                sensors = Sensor.objects.all()
                 sensor_serialized = SensorSerializer(sensors, many=True).data
                 return Response(sensor_serialized, status=status.HTTP_200_OK)
             else:
-                return Response([], status=status.HTTP_400_BAD_REQUEST)
+                # obtain all the keys of the request data
+                data = request.data
+                
+                
+                device = DeviceAllocation.objects.filter(user = user)
+                if(device.exists()):
+                    
+                    # select all the devices allocated to the user
+                    device_allocation = device.all()
+                    sensor_serialized = []
+                    for device in device_allocation:
+                        # select all the sensors of the device
+                        sensors = Sensor.objects.filter(device_id = device.device.device_id)
+                        
+                        sensor_serialized.append(SensorSerializer(sensors, many=True).data)
+                    flat_list = list(itertools.chain(*sensor_serialized))
+                    return Response(flat_list, status=status.HTTP_200_OK)
+                else:
+                    return Response([], status=status.HTTP_200_OK)
+        
+    def post(self, request):
+        refresh_token = request.COOKIES.get('refreshToken')
+        if refresh_token is None:
+            return Response({"Error": "No refresh token found"}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            device = DeviceAllocation.objects.filter(user = user)
-            if(device.exists()):
-                device_id = request.data["device_id"]
-                device_allocation = device.filter(device_id = device_id)
-                if(device_allocation.exists()):
-                    # select all the sensors of the device
-                    sensors = Sensor.objects.filter(device_id = device_id)
+            
+            if(request.user.is_anonymous):
+                return Response([], status=status.HTTP_200_OK)
+            user, _ = authenticate_credentials(refresh_token)
+            if(user.is_staff):
+                request_keys = request.data.keys()
+                if("start_time" in request_keys and "end_time" in request_keys and "device_id" in request_keys):
+                    start_time = request.data["start_time"]
+                    end_time = request.data["end_time"]
+                    device_id = request.data["device_id"]
+                    query_set = Sensor.objects.filter(live_sensors__timestamp__range=[start_time, end_time], device_id=device_id).distinct()
+                    sensor_serialized = SensorSerializer(query_set, many=True).data
+                    return Response(sensor_serialized, status=status.HTTP_200_OK)
+                    
+                elif("device_id" in request_keys):
+                    device_id = request.data["device_id"]
+                    sensors = Sensor.objects.filter(device_id=device_id)
                     sensor_serialized = SensorSerializer(sensors, many=True).data
                     return Response(sensor_serialized, status=status.HTTP_200_OK)
                 else:
-                    return Response([], status=status.HTTP_200_OK)
+                    return Response([], status=status.HTTP_400_BAD_REQUEST)
             else:
-                return Response([], status=status.HTTP_200_OK)
+                device = DeviceAllocation.objects.filter(user = user)
+                if(device.exists()):
+                    device_id = request.data["device_id"]
+                    device_allocation = device.filter(device_id = device_id)
+                    if(device_allocation.exists()):
+                        # select all the sensors of the device
+                        sensors = Sensor.objects.filter(device_id = device_id)
+                        sensor_serialized = SensorSerializer(sensors, many=True).data
+                        return Response(sensor_serialized, status=status.HTTP_200_OK)
+                    else:
+                        return Response([], status=status.HTTP_200_OK)
+                else:
+                    return Response([], status=status.HTTP_200_OK)
         
     
     def delete(self, request):
-        user = request.user
-        if(user.is_staff):
-            data = request.data
-            sensor_id = data["sensor_id"]
-            sensor = Sensor.objects.filter(sensor_id=sensor_id)
-            if (sensor.exists()):
-                req_sensor = sensor.first()
-                req_sensor.delete()
-                return Response({"Success": "Sensor Deleted Successfully"}, status=status.HTTP_200_OK)
-            
-            return Response({"Error": "No Sensor found with ID"}, status=status.HTTP_400_BAD_REQUEST)
+        refresh_token = request.COOKIES.get('refreshToken')
+        if refresh_token is None:
+            return Response({"Error": "No refresh token found"}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_400_BAD_REQUEST)
+            user, _ = authenticate_credentials(refresh_token) 
+            if(user.is_staff):
+                data = request.data
+                sensor_id = data["sensor_id"]
+                sensor = Sensor.objects.filter(sensor_id=sensor_id)
+                if (sensor.exists()):
+                    req_sensor = sensor.first()
+                    req_sensor.delete()
+                    return Response({"Success": "Sensor Deleted Successfully"}, status=status.HTTP_200_OK)
+                
+                return Response({"Error": "No Sensor found with ID"}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_400_BAD_REQUEST)
 
 class DeviceAPI(APIView):
 
     def get(self,request):
-        user = request.user
-        if(user.is_anonymous):
-            return Response([], status=status.HTTP_200_OK)
-        
-        elif(user.is_staff):
-            devices = Devices.objects.all()
-            device_serialized = DeviceSerializer(devices, many=True).data
-            return Response(device_serialized, status=status.HTTP_200_OK)
+        refresh_token = request.COOKIES.get('refreshToken')
+        if refresh_token is None:
+            return Response({"Error": "No refresh token found"}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            devices = DeviceAllocation.objects.filter(user = user)
-            device_serialized = []
-            if(devices.exists()):
-                for dev in devices:
-                    device = Devices.objects.filter(device_id = dev.device.device_id)
-                    device_serialized.append(DeviceSerializer(device, many=True).data)
-                flat_list = list(itertools.chain(*device_serialized))
-                return Response(flat_list, status=status.HTTP_200_OK)
-            else:
+            if(request.user.is_anonymous):
                 return Response([], status=status.HTTP_200_OK)
+            user, _ = authenticate_credentials(refresh_token)
+            
+            if(user.is_staff):
+                devices = Devices.objects.all()
+                device_serialized = DeviceSerializer(devices, many=True).data
+                return Response(device_serialized, status=status.HTTP_200_OK)
+            else:
+                devices = DeviceAllocation.objects.filter(user = user)
+                device_serialized = []
+                if(devices.exists()):
+                    for dev in devices:
+                        device = Devices.objects.filter(device_id = dev.device.device_id)
+                        device_serialized.append(DeviceSerializer(device, many=True).data)
+                    flat_list = list(itertools.chain(*device_serialized))
+                    return Response(flat_list, status=status.HTTP_200_OK)
+                else:
+                    return Response([], status=status.HTTP_200_OK)
         
     def delete(self, request):
-        user = request.user
-        if(user.is_staff):
-            data = request.data
-            device_id = data["device_id"]
-            device = Devices.objects.filter(device_id=device_id)
-            if (device.exists()):
-                req_device = device.first()
-                req_device.delete()
-                return Response({"Success": "Device Deleted Successfully"}, status=status.HTTP_200_OK)
-            
-            return Response({"Error": "No Device found with ID"}, status=status.HTTP_400_BAD_REQUEST)
+        refresh_token = request.COOKIES.get('refreshToken')
+        if refresh_token is None:
+            return Response({"Error": "No refresh token found"}, status=status.HTTP_401_UNAUTHORIZED)
         else:
-            return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_400_BAD_REQUEST)
+            user, _ = authenticate_credentials(refresh_token)    
+            if(user.is_staff):
+                data = request.data
+                device_id = data["device_id"]
+                device = Devices.objects.filter(device_id=device_id)
+                if (device.exists()):
+                    req_device = device.first()
+                    req_device.delete()
+                    return Response({"Success": "Device Deleted Successfully"}, status=status.HTTP_200_OK)
+                
+                return Response({"Error": "No Device found with ID"}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_400_BAD_REQUEST)
         
     
     def put(self, request):
@@ -215,40 +260,46 @@ class DeviceAllocationAPI(APIView):
 
     def get(self , request):
 
-        user = request.user
-        if(user.is_anonymous):
-            return Response([], status=status.HTTP_200_OK)
-        
-        elif(user.is_staff):
-            device_allocation = DeviceAllocation.objects.all()
-            device_allocation_serialized = DeviceAllocationSerializer(device_allocation, many=True).data
-            return Response(device_allocation_serialized, status=status.HTTP_200_OK)
-        
+        refresh_token = request.COOKIES.get('refreshToken')
+        if refresh_token is None:
+            return Response({"Error": "No refresh token found"}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            device_allocation = DeviceAllocation.objects.filter(user = user)
-            device_allocation_serialized = DeviceAllocationSerializer(device_allocation, many=True).data
-            return Response(device_allocation_serialized, status=status.HTTP_200_OK)
+            
+            if(request.user.is_anonymous):
+                return Response([], status=status.HTTP_200_OK)
+            user, _ = authenticate_credentials(refresh_token)
+            if(user.is_staff):
+                device_allocation = DeviceAllocation.objects.all()
+                device_allocation_serialized = DeviceAllocationSerializer(device_allocation, many=True).data
+                return Response(device_allocation_serialized, status=status.HTTP_200_OK)
+            else:
+                device_allocation = DeviceAllocation.objects.filter(user = user)
+                device_allocation_serialized = DeviceAllocationSerializer(device_allocation, many=True).data
+                return Response(device_allocation_serialized, status=status.HTTP_200_OK)
     
     def post(self ,request,format=None):
 
-        user = request.user
-        if(user.is_staff):
-            data = request.data
-            device_id = data["device_id"]
-            userID = data["userID"]
-
-            user1 = User.objects.filter(id=userID).first()
-            if Devices.objects.filter(device_id = device_id).exists():
-                device = Devices.objects.filter(device_id = device_id).first()
-                if(DeviceAllocation.objects.filter(device=device, user=user1).exists()):
-                    return Response({"Error": "Device already allocated to this user"}, status=status.HTTP_208_ALREADY_REPORTED)
-                device_allocation = DeviceAllocation(device=device, user=user1, user_name=user1.name)
-                device_allocation.save()
-                return Response({"Success": "Device allocated succesfully"}, status=status.HTTP_200_OK)
-            else:
-                return Response({"Error": "Device does not exists"}, status=status.HTTP_202_ACCEPTED)
+        refresh_token = request.COOKIES.get('refreshToken')
+        if refresh_token is None:
+            return Response({"Error": "No refresh token found"}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_400_BAD_REQUEST)
+            user, _ = authenticate_credentials(refresh_token)    
+            if(user.is_staff):
+                data = request.data
+                device_id = data["device_id"]
+                userID = data["userID"]
+                user1 = User.objects.filter(id=userID).first()
+                if Devices.objects.filter(device_id = device_id).exists():
+                    device = Devices.objects.filter(device_id = device_id).first()
+                    if(DeviceAllocation.objects.filter(device=device, user=user1).exists()):
+                        return Response({"Error": "Device already allocated to this user"}, status=status.HTTP_208_ALREADY_REPORTED)
+                    device_allocation = DeviceAllocation(device=device, user=user1, user_name=user1.name)
+                    device_allocation.save()
+                    return Response({"Success": "Device allocated succesfully"}, status=status.HTTP_200_OK)
+                else:
+                    return Response({"Error": "Device does not exists"}, status=status.HTTP_202_ACCEPTED)
+            else:
+                return Response({"Error": "You are not authorized to perform this action"}, status=status.HTTP_401_UNAUTHORIZED)
         
     def delete(self, request):
 
@@ -296,7 +347,7 @@ class LiveDataAPI(APIView):
         return Response({"Success": "Get the data"}, status=status.HTTP_200_OK)
 
     def post(self, request):
-        print(request.content_type)
+        
         res = request.data
         data = res['Data']
         sensor_id = res['sensor_id']
@@ -335,7 +386,7 @@ class UserInteractionAPI(APIView):
     permission_classes = [IsAuthenticated]
     def post(self, request):
         user = request.user
-        print(user.name)
+        
         if UserInteraction.objects.filter(date=datetime.date.today()).exists():
             obj = UserInteraction.objects.filter(date=datetime.date.today()).first()
             time = obj.time
